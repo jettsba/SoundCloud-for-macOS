@@ -23,6 +23,12 @@ final class PlayerController: NSObject {
 
         super.init()
 
+        if let url = Bundle.main.url(forResource: "Player", withExtension: "js"),
+           let source = try? String(contentsOf: url, encoding: .utf8) {
+            let script = WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true)
+            configuration.userContentController.addUserScript(script)
+        }
+
         webView.navigationDelegate = self
         webView.uiDelegate = self
         webView.load(URLRequest(url: URL(string: "https://soundcloud.com")!))
