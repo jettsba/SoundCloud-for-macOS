@@ -10,6 +10,7 @@ final class PlayerController: NSObject {
     let webView: WKWebView
 
     private var popups: [NSWindow] = []
+    private var playbackActivity: NSObjectProtocol?
 
     override init() {
         let configuration = WKWebViewConfiguration()
@@ -18,6 +19,9 @@ final class PlayerController: NSObject {
         // Sign-in providers such as Google refuse to work in a web view without a browser user agent.
         configuration.applicationNameForUserAgent = "Version/\(PlayerController.safariVersion) Safari/605.1.15"
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = true
+        // Keep timers and network running while the window is hidden or closed,
+        // otherwise the audio buffer starves and playback goes silent.
+        configuration.preferences.inactiveSchedulingPolicy = .none
 
         webView = WKWebView(frame: .zero, configuration: configuration)
 
@@ -28,10 +32,23 @@ final class PlayerController: NSObject {
             let script = WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true)
             configuration.userContentController.addUserScript(script)
         }
+        configuration.userContentController.add(self, name: "player")
 
         webView.navigationDelegate = self
         webView.uiDelegate = self
         webView.load(URLRequest(url: URL(string: "https://soundcloud.com")!))
+    }
+
+    private func setPlaying(_ playing: Bool) {
+        if playing, playbackActivity == nil {
+            playbackActivity = ProcessInfo.processInfo.beginActivity(
+                options: .userInitiatedAllowingIdleSystemSleep,
+                reason: "Playing audio"
+            )
+        } else if !playing, let activity = playbackActivity {
+            ProcessInfo.processInfo.endActivity(activity)
+            playbackActivity = nil
+        }
     }
 
     private static var safariVersion: String {
@@ -42,6 +59,16 @@ final class PlayerController: NSObject {
     private static func isSoundCloud(_ url: URL?) -> Bool {
         guard let host = url?.host?.lowercased() else { return false }
         return host == "soundcloud.com" || host.hasSuffix(".soundcloud.com")
+    }
+}
+
+extension PlayerController: WKScriptMessageHandler {
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.webView === webView,
+              let body = message.body as? [String: Any] else { return }
+        if let playing = body["playing"] as? Bool {
+            setPlaying(playing)
+        }
     }
 }
 

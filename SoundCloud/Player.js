@@ -1,6 +1,8 @@
 (() => {
   if (!/(^|\.)soundcloud\.com$/.test(location.hostname)) return;
 
+  const post = (message) => window.webkit.messageHandlers.player.postMessage(message);
+
   const media = new Set();
 
   const playButton = () => document.querySelector(".playControls__play");
@@ -11,6 +13,11 @@
   };
 
   const togglePlayback = () => playButton()?.click();
+
+  const report = () => {
+    const playing = [...media].some((element) => !element.paused && !element.ended);
+    post({ playing });
+  };
 
   // Control Center and the keyboard media keys go through the Media Session API.
   // SoundCloud only registers play/pause there, so macOS falls back to +/-15s skip buttons.
@@ -52,7 +59,12 @@
   const track = (element) => {
     if (media.has(element)) return;
     media.add(element);
-    element.addEventListener("playing", registerHandlers);
+    element.addEventListener("playing", () => {
+      registerHandlers();
+      report();
+    });
+    element.addEventListener("pause", report);
+    element.addEventListener("ended", report);
   };
 
   const originalPlay = HTMLMediaElement.prototype.play;
