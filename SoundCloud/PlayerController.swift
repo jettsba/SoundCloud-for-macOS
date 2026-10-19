@@ -9,6 +9,7 @@ import WebKit
 
 final class PlayerController: NSObject {
     let webView: WKWebView
+    var onPageColorChange: ((NSColor) -> Void)?
 
     private var popups: [NSWindow] = []
     private var playbackActivity: NSObjectProtocol?
@@ -78,6 +79,11 @@ final class PlayerController: NSObject {
         }
     }
 
+    private static func color(from rgb: [Double]) -> NSColor? {
+        guard rgb.count == 3 else { return nil }
+        return NSColor(srgbRed: rgb[0] / 255, green: rgb[1] / 255, blue: rgb[2] / 255, alpha: 1)
+    }
+
     private static var isLidClosed: Bool {
         let rootDomain = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPMrootDomain"))
         guard rootDomain != 0 else { return false }
@@ -101,6 +107,9 @@ extension PlayerController: WKScriptMessageHandler {
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.webView === webView,
               let body = message.body as? [String: Any] else { return }
+        if let color = (body["color"] as? [Double]).flatMap(PlayerController.color(from:)) {
+            onPageColorChange?(color)
+        }
         if let playing = body["playing"] as? Bool {
             setPlaying(playing)
         }

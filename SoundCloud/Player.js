@@ -99,6 +99,29 @@
     element.addEventListener("ended", report);
   };
 
+  // The window title bar takes the color of SoundCloud's header.
+  let pageColor = "";
+  const reportPageColor = () => {
+    const header = document.querySelector("header.header");
+    if (!header) return false;
+    const [r, g, b, a = 1] = getComputedStyle(header).backgroundColor.match(/[\d.]+/g)?.map(Number) ?? [];
+    if (r === undefined || a === 0) return false;
+    const color = `${r},${g},${b}`;
+    if (color !== pageColor) {
+      pageColor = color;
+      post({ color: [r, g, b] });
+    }
+    return true;
+  };
+
+  // Wait for the header to render, then only follow theme switches on <body>.
+  const pageObserver = new MutationObserver(() => {
+    if (!reportPageColor()) return;
+    pageObserver.disconnect();
+    new MutationObserver(reportPageColor).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+  });
+  pageObserver.observe(document, { childList: true, subtree: true });
+
   const originalPlay = HTMLMediaElement.prototype.play;
   HTMLMediaElement.prototype.play = function (...args) {
     track(this);
