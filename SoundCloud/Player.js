@@ -4,6 +4,14 @@
   const post = (message) => window.webkit.messageHandlers.player.postMessage(message);
 
   const media = new Set();
+  // Set when the Mac goes to sleep; any playback that starts before the user
+  // interacts again is treated as unwanted and paused.
+  let suspended = false;
+  // When the Mac wakes up, WebKit resumes media interrupted by sleep by sending
+  // a "play" action of its own, which must not be mistaken for the user's.
+  let sleeping = false;
+  let wokeAt = 0;
+  const isWakingUp = () => sleeping || Date.now() - wokeAt < 1500;
 
   const playButton = () => document.querySelector(".playControls__play");
   const isPlaying = () => {
@@ -14,9 +22,30 @@
 
   const togglePlayback = () => playButton()?.click();
 
+  const pause = () => {
+    if (playButton()?.classList.contains("playing")) togglePlayback();
+    media.forEach((element) => element.pause());
+  };
+
   const report = () => {
     const playing = [...media].some((element) => !element.paused && !element.ended);
     post({ playing });
+  };
+
+  const resume = () => { suspended = false; };
+  window.addEventListener("pointerdown", resume, true);
+  window.addEventListener("keydown", resume, true);
+
+  window.desktopPlayer = {
+    suspend() {
+      suspended = true;
+      sleeping = true;
+      pause();
+    },
+    wake() {
+      sleeping = false;
+      wokeAt = Date.now();
+    },
   };
 
   // Control Center and the keyboard media keys go through the Media Session API.
@@ -25,6 +54,8 @@
 
   const handlers = {
     play: () => {
+      if (suspended && isWakingUp()) return;
+      resume();
       if (!isPlaying()) togglePlayback();
     },
     pause: () => {
@@ -60,6 +91,7 @@
     if (media.has(element)) return;
     media.add(element);
     element.addEventListener("playing", () => {
+      if (suspended) pause();
       registerHandlers();
       report();
     });

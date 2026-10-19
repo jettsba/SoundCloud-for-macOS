@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import IOKit
 import WebKit
 
 final class PlayerController: NSObject {
@@ -37,6 +38,32 @@ final class PlayerController: NSObject {
         webView.navigationDelegate = self
         webView.uiDelegate = self
         webView.load(URLRequest(url: URL(string: "https://soundcloud.com")!))
+
+        let workspace = NSWorkspace.shared.notificationCenter
+        workspace.addObserver(self, selector: #selector(systemWillSleep), name: NSWorkspace.willSleepNotification, object: nil)
+        workspace.addObserver(self, selector: #selector(screensDidSleep), name: NSWorkspace.screensDidSleepNotification, object: nil)
+        workspace.addObserver(self, selector: #selector(didWake), name: NSWorkspace.didWakeNotification, object: nil)
+        workspace.addObserver(self, selector: #selector(didWake), name: NSWorkspace.screensDidWakeNotification, object: nil)
+    }
+
+    @objc private func systemWillSleep() {
+        suspend()
+    }
+
+    // Closing the lid only turns the display off at first; the system may not sleep for a while.
+    // Screens going off on their own (idle timeout) should not stop the music.
+    @objc private func screensDidSleep() {
+        if PlayerController.isLidClosed {
+            suspend()
+        }
+    }
+
+    @objc private func didWake() {
+        webView.evaluateJavaScript("window.desktopPlayer?.wake()")
+    }
+
+    private func suspend() {
+        webView.evaluateJavaScript("window.desktopPlayer?.suspend()")
     }
 
     private func setPlaying(_ playing: Bool) {
@@ -49,6 +76,14 @@ final class PlayerController: NSObject {
             ProcessInfo.processInfo.endActivity(activity)
             playbackActivity = nil
         }
+    }
+
+    private static var isLidClosed: Bool {
+        let rootDomain = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPMrootDomain"))
+        guard rootDomain != 0 else { return false }
+        defer { IOObjectRelease(rootDomain) }
+        let state = IORegistryEntryCreateCFProperty(rootDomain, "AppleClamshellState" as CFString, kCFAllocatorDefault, 0)
+        return state?.takeRetainedValue() as? Bool ?? false
     }
 
     private static var safariVersion: String {
