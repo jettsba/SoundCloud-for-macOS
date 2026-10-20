@@ -27,11 +27,12 @@ SoundCloud has no official Mac app. This one wraps [soundcloud.com](https://soun
 
 ## Install
 
+<p align="center">
+  <img src="docs/dmg.png" width="500" alt="SoundCloud.dmg installer window">
+</p>
+
 1. Download `SoundCloud.dmg` from the [latest release](https://github.com/jettsba/SoundCloud-for-macOS/releases/latest).
 2. Open it and drag **SoundCloud** to **Applications**.
-
-   <img src="docs/dmg.png" width="500" alt="SoundCloud.dmg installer window">
-
 3. The app isn't notarized by Apple, so the first launch is blocked. Open **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to the message about SoundCloud. You only need to do this once.
 
    Or run this in Terminal:
