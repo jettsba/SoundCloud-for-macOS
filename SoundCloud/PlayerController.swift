@@ -13,6 +13,7 @@ final class PlayerController: NSObject {
 
     private var popups: [NSWindow] = []
     private var playbackActivity: NSObjectProtocol?
+    private var nowPlaying: NowPlaying?
 
     override init() {
         let configuration = WKWebViewConfiguration()
@@ -28,6 +29,11 @@ final class PlayerController: NSObject {
         webView = WKWebView(frame: .zero, configuration: configuration)
 
         super.init()
+
+        nowPlaying = NowPlaying { [weak self] action, value in
+            let argument = value.map { ", \($0)" } ?? ""
+            self?.webView.evaluateJavaScript("window.desktopPlayer?.command('\(action)'\(argument))")
+        }
 
         if let url = Bundle.main.url(forResource: "Player", withExtension: "js"),
            let source = try? String(contentsOf: url, encoding: .utf8) {
@@ -79,6 +85,19 @@ final class PlayerController: NSObject {
         }
     }
 
+    private static func track(from value: Any?) -> NowPlaying.Track? {
+        guard let info = value as? [String: Any],
+              let title = info["title"] as? String, !title.isEmpty else { return nil }
+        return NowPlaying.Track(
+            title: title,
+            artist: info["artist"] as? String ?? "",
+            album: info["album"] as? String ?? "",
+            artwork: info["artwork"] as? String ?? "",
+            duration: (info["duration"] as? NSNumber)?.doubleValue ?? 0,
+            position: (info["position"] as? NSNumber)?.doubleValue ?? 0
+        )
+    }
+
     private static func color(from rgb: [Double]) -> NSColor? {
         guard rgb.count == 3 else { return nil }
         return NSColor(srgbRed: rgb[0] / 255, green: rgb[1] / 255, blue: rgb[2] / 255, alpha: 1)
@@ -112,6 +131,7 @@ extension PlayerController: WKScriptMessageHandler {
         }
         if let playing = body["playing"] as? Bool {
             setPlaying(playing)
+            nowPlaying?.update(track: PlayerController.track(from: body["track"]), playing: playing)
         }
     }
 }

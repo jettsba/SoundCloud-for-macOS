@@ -27,9 +27,25 @@
     media.forEach((element) => element.pause());
   };
 
+  // The element SoundCloud is playing through, or the last one it used.
+  let current = null;
+
+  const metadata = () => {
+    const data = navigator.mediaSession?.metadata;
+    if (!data?.title) return null;
+    const artwork = [...(data.artwork ?? [])].pop()?.src ?? "";
+    return { title: data.title, artist: data.artist ?? "", album: data.album ?? "", artwork };
+  };
+
+  // The app keeps its own Now Playing entry. WebKit's own one lives in its
+  // GPU process, whose bundle id every web view on the Mac shares, so other
+  // apps cannot address it while another player is the current one.
   const report = () => {
     const playing = [...media].some((element) => !element.paused && !element.ended);
-    post({ playing });
+    const track = metadata();
+    const duration = current && Number.isFinite(current.duration) ? current.duration : 0;
+    const position = current ? current.currentTime : 0;
+    post({ playing, track: track ? { ...track, duration, position } : null });
   };
 
   const resume = () => { suspended = false; };
@@ -45,6 +61,16 @@
     wake() {
       sleeping = false;
       wokeAt = Date.now();
+    },
+    command(action, value) {
+      if (action === "toggle") {
+        (isPlaying() ? handlers.pause : handlers.play)();
+      } else if (action === "seekto") {
+        if (pageHandlers.seekto) pageHandlers.seekto({ action, seekTime: value });
+        else if (current) current.currentTime = value;
+      } else {
+        handlers[action]?.();
+      }
     },
   };
 
@@ -68,6 +94,9 @@
   };
 
   const setActionHandler = session?.setActionHandler.bind(session);
+  // What the page registers for actions left to it, kept for the app's own
+  // controls: seeking goes through SoundCloud so its progress bar follows.
+  const pageHandlers = {};
 
   // WebKit drops registered commands while no media element exists,
   // so they have to be registered again once playback starts.
@@ -82,21 +111,40 @@
 
   if (session) {
     session.setActionHandler = (action, handler) => {
-      if (!(action in handlers)) setActionHandler(action, handler);
+      if (action in handlers) return;
+      pageHandlers[action] = handler;
+      setActionHandler(action, handler);
     };
     registerHandlers();
+
+    // A new track arrives as new metadata, before or after its audio starts.
+    const property = Object.getOwnPropertyDescriptor(MediaSession.prototype, "metadata");
+    if (property?.get && property.set) {
+      Object.defineProperty(session, "metadata", {
+        configurable: true,
+        get() { return property.get.call(this); },
+        set(value) {
+          property.set.call(this, value);
+          report();
+        },
+      });
+    }
   }
 
   const track = (element) => {
     if (media.has(element)) return;
     media.add(element);
     element.addEventListener("playing", () => {
+      current = element;
       if (suspended) pause();
       registerHandlers();
       report();
     });
-    element.addEventListener("pause", report);
-    element.addEventListener("ended", report);
+    for (const name of ["pause", "ended", "seeked", "durationchange"]) {
+      element.addEventListener(name, () => {
+        if (element === current) report();
+      });
+    }
   };
 
   // The window title bar takes the color of SoundCloud's header.
